@@ -16,7 +16,7 @@ This project implements a robust authentication system with features such as use
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository_url>
+    git clone https://github.com/UltronTheAI/AuthSystem.git
     cd AuthSystem
     ```
 
