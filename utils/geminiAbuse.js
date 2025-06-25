@@ -14,14 +14,24 @@ const checkTextForAbuse = async (text) => {
     }
 };
 
-const checkImageForAbuse = async (imageBuffer) => {
+const axios = require('axios');
+
+const checkImageForAbuse = async (imageUrl) => {
+    if (!imageUrl) {
+        console.warn('Empty image URL provided to checkImageForAbuse.');
+        return false; // Treat as safe if no image is provided
+    }
     try {
+        const axiosResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+        const imageBuffer = Buffer.from(axiosResponse.data);
+        const mimeType = axiosResponse.headers['content-type'];
+
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const base64Image = imageBuffer.toString('base64');
         const prompt = "Check this image for any sexual abuse, hate speech, or inappropriate content. Respond with 'SAFE' if no such content is found, otherwise respond with 'UNSAFE'.";
         const image = {
             inlineData: {
-                mimeType: 'image/jpeg', // Assuming JPEG, adjust if necessary
+                mimeType: mimeType,
                 data: base64Image,
             },
         };

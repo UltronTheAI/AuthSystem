@@ -25,11 +25,11 @@ const register = async (req, res) => {
         // Handle profile image upload and abuse check
         if (req.file) {
             const imageBuffer = req.file.buffer;
-            const isImageAbusive = await checkImageForAbuse(imageBuffer);
+            const isImageAbusive = await checkImageForAbuse(result.secure_url);
             if (isImageAbusive) {
                 return res.status(400).json({ message: "Inappropriate content detected in profile image", status: 400 });
             }
-            const result = await cloudinary.uploader.upload(req.file.path, { folder: 'profile_images' });
+            const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, { folder: 'profile_images' });
             profileImage = result.secure_url;
         }
 
@@ -129,8 +129,8 @@ const verifyEmail = async (req, res) => {
 };
 
 const sendTextVerificationCode = async (req, res) => {
+  const { email } = req.body;
   try {
-    const { email } = req.body;
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -229,7 +229,7 @@ const updateProfile = async (req, res) => {
         }
 
         // Upload image to Cloudinary
-        const result = await cloudinary.uploader.upload(req.file.path, {
+        const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, {
             folder: 'profile_images',
             width: 150,
             height: 150,
@@ -281,7 +281,7 @@ const deleteAccount = async (req, res) => {
             await cloudinary.uploader.destroy(`profile_images/${publicId}`);
         }
 
-        await user.remove();
+        await user.deleteOne();
 
         res.status(200).json({ message: 'Account deleted successfully' });
     } catch (error) {
