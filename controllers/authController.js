@@ -24,12 +24,11 @@ const register = async (req, res) => {
 
         // Handle profile image upload and abuse check
         if (req.file) {
-            const imageBuffer = req.file.buffer;
+            const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, { folder: 'profile_images' });
             const isImageAbusive = await checkImageForAbuse(result.secure_url);
             if (isImageAbusive) {
                 return res.status(400).json({ message: "Inappropriate content detected in profile image", status: 400 });
             }
-            const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, { folder: 'profile_images' });
             profileImage = result.secure_url;
         }
 
@@ -158,6 +157,37 @@ const sendTextVerificationCode = async (req, res) => {
   }
 };
 
+const requestPasswordReset = async (req, res) => {
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const resetToken = jwt.sign({ id: user._id }, process.env.JWT_ACCESS_SECRET, { expiresIn: '1h' });
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    await user.save();
+
+    const resetLink = `${req.protocol}://${req.get('host')}/api/reset-password?token=${resetToken}`;
+    await transporter.sendMail({
+      from: process.env.GMAIL,
+      to: email,
+      subject: 'Password Reset Request',
+      html: `<p>You are receiving this because you (or someone else) have requested the reset of the password for your account.</p>
+             <p>Please click on the following link, or paste this into your browser to complete the process:</p>
+             <p><a href="${resetLink}">${resetLink}</a></p>
+             <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>`,
+    });
+
+    res.status(200).json({ message: 'Password reset email sent' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+};
+
 const verifyTextCode = async (req, res) => {
   try {
     const { email, code } = req.body;
@@ -205,71 +235,75 @@ const verifyTextCode = async (req, res) => {
       return res.status(400).json({ message: 'Verification code has expired', status: 400 });
     }
 
-    // Successful verification
+    // Reset attempts and unlock account
+    user.textVerificationAttempts = 0;
+    user.textVerificationLockedUntil = undefined;
     user.textVerificationCode = undefined;
     user.textVerificationCodeExpires = undefined;
-    user.textVerificationAttempts = 0;
-    user.isTextVerified = true;
     await user.save();
 
-    res.status(200).json({ message: 'Text verification successful', status: 200 });
+    res.status(200).json({ message: 'Email verified successfully', status: 200 });
+
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ message: 'Server Error', status: 500 });
+    res.status(500).send('Server Error');
   }
 };
 
-const updateProfile = async (req, res) => {
-    try {
-        // Implement JWT authentication here
-        // For now, assuming user is authenticated and user ID is available from req.user.id
 
-        if (!req.file) {
-            return res.status(400).json({ message: 'No profile image uploaded.' });
-        }
 
-        // Upload image to Cloudinary
-        const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, {
-            folder: 'profile_images',
-            width: 150,
-            height: 150,
-            crop: 'fill'
-        });
+const updateAccountDetails = async (req, res) => {
+  const { username, firstName, surname, email } = req.body;
+  const userId = req.user.id; // Assuming user ID is available from authentication middleware
+  let profileImage = null;
 
-        // Use Gemini API to check for abuse or sexual content
-        const moderationResult = await checkImageForAbuse(result.secure_url);
-        if (moderationResult) {
-            // Optionally delete the uploaded image from Cloudinary if it's abusive
-            await cloudinary.uploader.destroy(result.public_id);
-            return res.status(400).json({ message: 'Image contains inappropriate content.' });
-        }
-
-        // Update user's profileImageUrl in MongoDB
-        const user = await User.findById(req.user.id);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found.' });
-        }
-
-        // Optionally delete old image from Cloudinary
-        if (user.profileImageUrl) {
-            const publicId = user.profileImageUrl.split('/').pop().split('.')[0];
-            await cloudinary.uploader.destroy(`profile_images/${publicId}`);
-        }
-
-        user.profileImageUrl = result.secure_url;
-        await user.save();
-
-        res.status(200).json({ message: 'Profile updated successfully', profileImageUrl: user.profileImageUrl });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error' });
+  try {
+    let user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
+
+    // Check for duplicate username or email if they are being changed
+    if (username && username !== user.username) {
+      const existingUser = await User.findOne({ username });
+      if (existingUser) {
+        return res.status(400).json({ message: 'Username already taken' });
+      }
+      user.username = username;
+    }
+    if (email && email !== user.email) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+      user.email = email;
+    }
+
+    if (firstName) user.firstName = firstName;
+    if (surname) user.surname = surname;
+
+    // Handle profile image upload and abuse check
+    if (req.file) {
+      const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, { folder: 'profile_images' });
+      const isImageAbusive = await checkImageForAbuse(result.secure_url);
+      if (isImageAbusive) {
+        return res.status(400).json({ message: "Inappropriate content detected in profile image", status: 400 });
+      }
+      profileImage = result.secure_url;
+    }
+
+    await user.save();
+    res.status(200).json({ message: 'Account details updated successfully', user });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
 };
 
 const deleteAccount = async (req, res) => {
     try {
-        // User ID is available from req.user.id due to auth middleware
-        const user = await User.findById(req.user.id);
+        const userId = req.user.id; // Assuming user ID is available from authentication middleware
+        const user = await User.findById(userId);
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
@@ -284,18 +318,44 @@ const deleteAccount = async (req, res) => {
         await user.deleteOne();
 
         res.status(200).json({ message: 'Account deleted successfully' });
-    } catch (error) {
-        console.error(error);
+    } catch (err) {
+        console.error(err.message);
         res.status(500).json({ message: 'Server error' });
     }
 };
 
+const resetPassword = async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired token' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+
+    await user.save();
+    res.status(200).json({ message: 'Password has been reset' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+};
+
 module.exports = {
-    register,
-    login,
-    verifyEmail,
-    sendTextVerificationCode,
-    verifyTextCode,
-    updateProfile,
-    deleteAccount
+  register,
+  login,
+  verifyEmail,
+  sendTextVerificationCode,
+  verifyTextCode,
+  requestPasswordReset,
+  resetPassword,
+  updateAccountDetails,
+  deleteAccount,
 };
