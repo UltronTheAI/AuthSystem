@@ -14,7 +14,7 @@ app.use(express.json({ extended: false }));
 app.use(cors({ origin: '*' }));
 
 // Serve static files from the 'test' directory
-// app.use(express.static('test'));
+app.use(express.static('public'));
 
 // Define Routes
 // app.get('/', (req, res) => res.sendFile(__dirname + '/test/index.html'));
