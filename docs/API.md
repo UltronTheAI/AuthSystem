@@ -97,22 +97,62 @@ Some endpoints require a JSON Web Token (JWT) for authentication. Include the to
     -   `429 Too Many Requests`: `{"message": "Too many failed attempts. Account locked for 30 minutes"}` or `{"message": "Too many failed attempts. Please try again in <minutes> minutes"}`
     -   `500 Server Error`
 
-### 6. Update Profile
+### 6. Update Account Details
 
--   **URL:** `/api/update-profile`
+-   **URL:** `/api/update-account`
 -   **Method:** `PUT`
--   **Description:** Updates the user's profile, specifically the profile image. Requires authentication.
+-   **Description:** Updates the user's account details, including username, email, first name, surname, and optionally profile image. Requires authentication.
 -   **Headers:**
     -   `x-auth-token`: `<jwt_token>`
--   **Request Body (multipart/form-data):**
-    -   `profileImage` (file, required): The new profile image to upload.
+-   **Request Body (application/json or multipart/form-data):**
+    ```json
+    {
+        "username": "newusername",
+        "email": "newemail@example.com",
+        "firstName": "New",
+        "surname": "Name"
+    }
+    ```
+    -   `profileImage` (optional): File upload for new profile picture.
 -   **Responses:**
-    -   `200 OK`: `{"message": "Profile image updated successfully", "profileImage": "<new_image_url>"}`
-    -   `400 Bad Request`: `{"message": "No image file provided"}` or `{"message": "Inappropriate content detected in profile image"}`
+    -   `200 OK`: `{"message": "Account updated successfully"}`
+    -   `400 Bad Request`: `{"message": "Username or email already exists"}` or `{"message": "Inappropriate content detected in user details"}` or `{"message": "Inappropriate content detected in profile image"}`
     -   `401 Unauthorized`: If no token or invalid token.
     -   `500 Server Error`
 
-### 7. Delete Account
+### 7. Request Password Reset
+
+-   **URL:** `/api/request-password-reset`
+-   **Method:** `POST`
+-   **Description:** Sends a password reset email to the user's registered email address.
+-   **Request Body (application/json):**
+    ```json
+    {
+        "email": "user@example.com"
+    }
+    ```
+-   **Responses:**
+    -   `200 OK`: `{"message": "Password reset email sent if email exists"}`
+    -   `500 Server Error`
+
+### 8. Reset Password
+
+-   **URL:** `/api/reset-password`
+-   **Method:** `POST`
+-   **Description:** Resets the user's password using a token received via email.
+-   **Request Body (application/json):**
+    ```json
+    {
+        "token": "<reset_token>",
+        "newPassword": "new_strong_password"
+    }
+    ```
+-   **Responses:**
+    -   `200 OK`: `{"message": "Password reset successfully"}`
+    -   `400 Bad Request`: `{"message": "Invalid or expired token"}`
+    -   `500 Server Error`
+
+### 9. Delete Account
 
 -   **URL:** `/api/delete-account`
 -   **Method:** `DELETE`

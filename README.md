@@ -8,6 +8,7 @@ This project implements a robust authentication system with features such as use
 - User Login with JWT authentication
 - Email Verification for new registrations
 - Text Code Verification with rate limiting
+- Password Reset functionality
 - Profile Image Uploads with Cloudinary integration
 - Gemini API integration for text and image abuse detection
 - Account Deletion with optional Cloudinary image removal
